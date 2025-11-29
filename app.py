@@ -38,12 +38,17 @@ class User(UserMixin):
     @staticmethod
     def get_by_username(username):
         try:
+            print(f"🔍 Buscando usuario: {username}")
+            
+            # Convertir puerto a entero
+            port = int(os.environ.get('MYSQLPORT', 3306))
+            
             connection = mysql.connector.connect(
                 host=os.environ.get('MYSQLHOST'),
                 database=os.environ.get('MYSQLDATABASE'),
                 user=os.environ.get('MYSQLUSER'),
                 password=os.environ.get('MYSQLPASSWORD'),
-                port=os.environ.get('MYSQLPORT')
+                port=port
             )
             
             cursor = connection.cursor(dictionary=True)
@@ -55,26 +60,35 @@ class User(UserMixin):
             connection.close()
             
             if result:
+                print(f"✅ Usuario encontrado: {username}")
                 return User(
                     id=result['id'],
                     username=result['username'],
                     password_hash=result['password_hash'],
                     rol=result['rol']
                 )
-            return None
+            else:
+                print(f"❌ Usuario no encontrado: {username}")
+                return None
+                
         except Error as e:
-            print(f"Error: {e}")
+            print(f"🚨 Error buscando usuario: {e}")
             return None
 
     @staticmethod
     def get_by_id(user_id):
         try:
+            print(f"🔍 Buscando usuario por ID: {user_id}")
+            
+            # Convertir puerto a entero
+            port = int(os.environ.get('MYSQLPORT', 3306))
+            
             connection = mysql.connector.connect(
                 host=os.environ.get('MYSQLHOST'),
                 database=os.environ.get('MYSQLDATABASE'),
                 user=os.environ.get('MYSQLUSER'),
                 password=os.environ.get('MYSQLPASSWORD'),
-                port=os.environ.get('MYSQLPORT')
+                port=port
             )
             
             cursor = connection.cursor(dictionary=True)
@@ -103,12 +117,15 @@ def load_user(user_id):
 
 def get_db_connection():
     try:
+        # Convertir puerto a entero
+        port = int(os.environ.get('MYSQLPORT', 3306))
+        
         connection = mysql.connector.connect(
             host=os.environ.get('MYSQLHOST'),
             database=os.environ.get('MYSQLDATABASE'),
             user=os.environ.get('MYSQLUSER'),
             password=os.environ.get('MYSQLPASSWORD'),
-            port=os.environ.get('MYSQLPORT')
+            port=port
         )
         return connection
     except Error as e:
@@ -131,13 +148,17 @@ def login():
         username = request.form['username']
         password = request.form['password']
         
+        print(f"🔐 Intento de login: {username}")
+        
         user = User.get_by_username(username)
         if user and user.check_password(password):
             login_user(user)
             log_action(f"Login exitoso")
+            flash(f'Bienvenido {username}!', 'success')
             return redirect(url_for('dashboard'))
         else:
             flash('Usuario o contraseña incorrectos', 'error')
+            print(f"❌ Login fallido para: {username}")
     
     return render_template('login.html')
 
