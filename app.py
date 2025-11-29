@@ -1,7 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-import mysql.connector
-from mysql.connector import Error
+import pymysql
 import logging
 from datetime import datetime
 import os
@@ -40,23 +39,21 @@ class User(UserMixin):
         try:
             print(f"🔍 Buscando usuario: {username}")
             
-            # Convertir puerto a entero
-            port = int(os.environ.get('MYSQLPORT', 3306))
-            
-            connection = mysql.connector.connect(
+            connection = pymysql.connect(
                 host=os.environ.get('MYSQLHOST'),
                 database=os.environ.get('MYSQLDATABASE'),
                 user=os.environ.get('MYSQLUSER'),
                 password=os.environ.get('MYSQLPASSWORD'),
-                port=port
+                port=int(os.environ.get('MYSQLPORT', 3306)),
+                charset='utf8mb4',
+                cursorclass=pymysql.cursors.DictCursor
             )
             
-            cursor = connection.cursor(dictionary=True)
-            query = "SELECT * FROM usuarios_sistema WHERE username = %s"
-            cursor.execute(query, (username,))
-            result = cursor.fetchone()
+            with connection.cursor() as cursor:
+                query = "SELECT * FROM usuarios_sistema WHERE username = %s"
+                cursor.execute(query, (username,))
+                result = cursor.fetchone()
             
-            cursor.close()
             connection.close()
             
             if result:
@@ -71,32 +68,28 @@ class User(UserMixin):
                 print(f"❌ Usuario no encontrado: {username}")
                 return None
                 
-        except Error as e:
+        except Exception as e:
             print(f"🚨 Error buscando usuario: {e}")
             return None
 
     @staticmethod
     def get_by_id(user_id):
         try:
-            print(f"🔍 Buscando usuario por ID: {user_id}")
-            
-            # Convertir puerto a entero
-            port = int(os.environ.get('MYSQLPORT', 3306))
-            
-            connection = mysql.connector.connect(
+            connection = pymysql.connect(
                 host=os.environ.get('MYSQLHOST'),
                 database=os.environ.get('MYSQLDATABASE'),
                 user=os.environ.get('MYSQLUSER'),
                 password=os.environ.get('MYSQLPASSWORD'),
-                port=port
+                port=int(os.environ.get('MYSQLPORT', 3306)),
+                charset='utf8mb4',
+                cursorclass=pymysql.cursors.DictCursor
             )
             
-            cursor = connection.cursor(dictionary=True)
-            query = "SELECT * FROM usuarios_sistema WHERE id = %s"
-            cursor.execute(query, (user_id,))
-            result = cursor.fetchone()
+            with connection.cursor() as cursor:
+                query = "SELECT * FROM usuarios_sistema WHERE id = %s"
+                cursor.execute(query, (user_id,))
+                result = cursor.fetchone()
             
-            cursor.close()
             connection.close()
             
             if result:
@@ -107,7 +100,7 @@ class User(UserMixin):
                     rol=result['rol']
                 )
             return None
-        except Error as e:
+        except Exception as e:
             print(f"Error: {e}")
             return None
 
@@ -117,18 +110,17 @@ def load_user(user_id):
 
 def get_db_connection():
     try:
-        # Convertir puerto a entero
-        port = int(os.environ.get('MYSQLPORT', 3306))
-        
-        connection = mysql.connector.connect(
+        connection = pymysql.connect(
             host=os.environ.get('MYSQLHOST'),
             database=os.environ.get('MYSQLDATABASE'),
             user=os.environ.get('MYSQLUSER'),
             password=os.environ.get('MYSQLPASSWORD'),
-            port=port
+            port=int(os.environ.get('MYSQLPORT', 3306)),
+            charset='utf8mb4',
+            cursorclass=pymysql.cursors.DictCursor
         )
         return connection
-    except Error as e:
+    except Exception as e:
         print(f"Error conectando a MySQL: {e}")
         return None
 
@@ -167,18 +159,16 @@ def login():
 def dashboard():
     connection = get_db_connection()
     if connection:
-        cursor = connection.cursor(dictionary=True)
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) as total FROM miembros")
+            total_miembros = cursor.fetchone()['total']
+            
+            cursor.execute("SELECT COUNT(*) as total FROM membresias WHERE estado = 'activa'")
+            membresias_activas = cursor.fetchone()['total']
+            
+            cursor.execute("SELECT COUNT(*) as total FROM clases")
+            total_clases = cursor.fetchone()['total']
         
-        cursor.execute("SELECT COUNT(*) as total FROM miembros")
-        total_miembros = cursor.fetchone()['total']
-        
-        cursor.execute("SELECT COUNT(*) as total FROM membresias WHERE estado = 'activa'")
-        membresias_activas = cursor.fetchone()['total']
-        
-        cursor.execute("SELECT COUNT(*) as total FROM clases")
-        total_clases = cursor.fetchone()['total']
-        
-        cursor.close()
         connection.close()
         
         stats = {
@@ -202,10 +192,9 @@ def miembros():
     connection = get_db_connection()
     miembros = []
     if connection:
-        cursor = connection.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM miembros ORDER BY created_at DESC")
-        miembros = cursor.fetchall()
-        cursor.close()
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM miembros ORDER BY created_at DESC")
+            miembros = cursor.fetchall()
         connection.close()
     
     return render_template('miembros.html', miembros=miembros)
@@ -225,11 +214,10 @@ def agregar_miembro():
         
         connection = get_db_connection()
         if connection:
-            cursor = connection.cursor()
-            query = "INSERT INTO miembros (nombre, email, telefono, fecha_inscripcion) VALUES (%s, %s, %s, %s)"
-            cursor.execute(query, (nombre, email, telefono, fecha_inscripcion))
+            with connection.cursor() as cursor:
+                query = "INSERT INTO miembros (nombre, email, telefono, fecha_inscripcion) VALUES (%s, %s, %s, %s)"
+                cursor.execute(query, (nombre, email, telefono, fecha_inscripcion))
             connection.commit()
-            cursor.close()
             connection.close()
             
             flash('Miembro agregado exitosamente', 'success')
@@ -248,16 +236,14 @@ def consultas():
     
     connection = get_db_connection()
     if connection and tipo_consulta:
-        cursor = connection.cursor(dictionary=True)
+        with connection.cursor() as cursor:
+            if tipo_consulta == 'miembros_activos':
+                cursor.execute("SELECT * FROM miembros WHERE estado = 'activo'")
+                resultado = cursor.fetchall()
+            elif tipo_consulta == 'clases_hoy':
+                cursor.execute("SELECT * FROM clases")
+                resultado = cursor.fetchall()
         
-        if tipo_consulta == 'miembros_activos':
-            cursor.execute("SELECT * FROM miembros WHERE estado = 'activo'")
-            resultado = cursor.fetchall()
-        elif tipo_consulta == 'clases_hoy':
-            cursor.execute("SELECT * FROM clases")
-            resultado = cursor.fetchall()
-        
-        cursor.close()
         connection.close()
     
     return render_template('consultas.html', resultado=resultado, tipo_consulta=tipo_consulta)
